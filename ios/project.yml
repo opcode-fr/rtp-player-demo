@@ -1,0 +1,28 @@
+# Projet Xcode généré : `xcodegen generate` (le .xcodeproj n'est pas versionné).
+name: RtpPlayerDemo
+options:
+  bundleIdPrefix: fr.opcode
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  RtpCore:
+    path: RtpCore
+targets:
+  RtpPlayerDemo:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: RtpCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.opcode.rtpdemo
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: RTP Player Demo
+        # iOS demande l'accord de l'utilisateur avant tout trafic sur le réseau local.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Recevoir le flux vidéo RTP du serveur sur le réseau local.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        CODE_SIGN_STYLE: Automatic
