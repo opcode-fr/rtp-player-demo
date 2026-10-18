@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "RTP Player Demo",
+    "slug": "rn-demo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "fr.opcode.rtpdemo.rn",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Recevoir le flux vidéo RTP du serveur sur le réseau local."
+      }
+    },
+    "android": {
+      "package": "fr.opcode.rtpdemo.rn",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    }
+  }
+}

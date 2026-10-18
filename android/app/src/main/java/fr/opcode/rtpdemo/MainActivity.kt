@@ -14,10 +14,11 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import fr.opcode.rtpdemo.rtp.RtpPipeline
-import fr.opcode.rtpdemo.rtp.RtpSource
-import fr.opcode.rtpdemo.rtp.RtpSources
-import fr.opcode.rtpdemo.rtp.SessionDescription
+import fr.opcode.rtpvideo.core.RtpPipeline
+import fr.opcode.rtpvideo.core.RtpSource
+import fr.opcode.rtpvideo.core.RtpSources
+import fr.opcode.rtpvideo.core.SessionDescription
+import fr.opcode.rtpvideo.core.H264SurfaceDecoder
 
 /** Écran unique : le SDP du flux, Lire/Arrêter, la vidéo et quelques compteurs. */
 class MainActivity : Activity() {

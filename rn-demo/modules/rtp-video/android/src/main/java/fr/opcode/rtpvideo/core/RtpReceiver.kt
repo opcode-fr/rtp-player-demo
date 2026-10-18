@@ -1,4 +1,4 @@
-package fr.opcode.rtpdemo.rtp
+package fr.opcode.rtpvideo.core
 
 import java.io.Closeable
 import java.net.DatagramPacket

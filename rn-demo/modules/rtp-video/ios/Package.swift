@@ -5,11 +5,12 @@ import PackageDescription
 
 let package = Package(
     name: "RtpCore",
-    platforms: [.iOS(.v17), .macOS(.v14)],
+    platforms: [.iOS("16.4"), .macOS(.v13)],
     products: [.library(name: "RtpCore", targets: ["RtpCore"])],
     targets: [
-        .target(name: "RtpCore"),
-        .testTarget(name: "RtpCoreTests", dependencies: ["RtpCore"]),
+        // Mêmes sources que le pod RtpVideo (hors fichiers Expo) : voir RtpVideo.podspec.
+        .target(name: "RtpCore", path: "RtpCore"),
+        .testTarget(name: "RtpCoreTests", dependencies: ["RtpCore"], path: "Tests/RtpCoreTests"),
     ],
     swiftLanguageVersions: [.v5]
 )

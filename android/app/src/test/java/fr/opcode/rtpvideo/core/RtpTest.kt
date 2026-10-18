@@ -1,4 +1,4 @@
-package fr.opcode.rtpdemo.rtp
+package fr.opcode.rtpvideo.core
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals

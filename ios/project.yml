@@ -6,7 +6,7 @@ options:
     iOS: "17.0"
 packages:
   RtpCore:
-    path: RtpCore
+    path: ../rn-demo/modules/rtp-video/ios
 targets:
   RtpPlayerDemo:
     type: application

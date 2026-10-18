@@ -22,6 +22,8 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // Le cœur RTP vit dans le module React Native ; cette appli native sert de banc de test.
+    sourceSets["main"].java.srcDir("../../rn-demo/modules/rtp-video/android/src/main/java/fr/opcode/rtpvideo/core")
 }
 
 // Aucune dépendance d'exécution : seulement les API Android (MediaCodec, sockets).

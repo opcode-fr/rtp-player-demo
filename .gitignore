@@ -12,3 +12,7 @@ ios/*.xcodeproj/
 ios/RtpCore/.swiftpm/
 # Sortie de tools/stream.sh
 tools/stream.sdp
+# Swift Package du module
+rn-demo/modules/rtp-video/ios/.build/
+rn-demo/modules/rtp-video/ios/.swiftpm/
+rn-demo/modules/rtp-video/android/build/

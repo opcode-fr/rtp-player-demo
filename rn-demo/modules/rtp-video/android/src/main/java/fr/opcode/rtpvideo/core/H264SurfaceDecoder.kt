@@ -1,9 +1,8 @@
-package fr.opcode.rtpdemo
+package fr.opcode.rtpvideo.core
 
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.view.Surface
-import fr.opcode.rtpdemo.rtp.AccessUnit
 import java.nio.ByteBuffer
 
 /**

@@ -1,4 +1,4 @@
-package fr.opcode.rtpdemo.rtp
+package fr.opcode.rtpvideo.core
 
 /** Paquet RTP (RFC 3550 §5.1). */
 class RtpPacket(

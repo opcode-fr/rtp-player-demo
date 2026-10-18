@@ -1,26 +1,25 @@
 import AVFoundation
 import CoreMedia
-import RtpCore
 
 /// Décodage matériel et affichage : `AVSampleBufferDisplayLayer` décode le H.264 (VideoToolbox)
 /// et affiche dans la foulée. Le H.264 réseau (NAL brutes) est converti au format AVCC attendu
 /// par Apple : chaque NAL précédée de sa longueur sur 4 octets.
-final class H264LayerRenderer {
-    private let renderer: AVSampleBufferVideoRenderer
+public final class H264LayerRenderer {
+    private let layer: AVSampleBufferDisplayLayer
     private var format: CMVideoFormatDescription?
     private var sps: [UInt8]?
     private var pps: [UInt8]?
 
-    init(layer: AVSampleBufferDisplayLayer, sps: [UInt8]?, pps: [UInt8]?) {
-        renderer = layer.sampleBufferRenderer
-        renderer.flush()
+    public init(layer: AVSampleBufferDisplayLayer, sps: [UInt8]?, pps: [UInt8]?) {
+        self.layer = layer
+        flush()
         self.sps = sps
         self.pps = pps
         makeFormat()
     }
 
     /// Retourne false si l'image n'a pas pu être affichée (le flux doit repartir d'une image clé).
-    func render(_ au: AccessUnit) -> Bool {
+    public func render(_ au: AccessUnit) -> Bool {
         var slices: [[UInt8]] = []
         var changed = false
         for nal in au.nalUnits {
@@ -34,10 +33,25 @@ final class H264LayerRenderer {
         if changed || format == nil { makeFormat() } // SPS/PPS dans le flux, ou changement de résolution
         guard let format, !slices.isEmpty else { return format != nil }
 
-        if renderer.status == .failed { renderer.flush() ; return false }
         guard let sample = makeSample(slices, format: format) else { return false }
-        renderer.enqueue(sample)
+        return enqueue(sample)
+    }
+
+    // iOS 17+ : API sampleBufferRenderer ; avant : l'ancienne API de la couche (dépréciée en iOS 18).
+    private func enqueue(_ sample: CMSampleBuffer) -> Bool {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            let r = layer.sampleBufferRenderer
+            if r.status == .failed { r.flush(); return false }
+            r.enqueue(sample)
+        } else {
+            if layer.status == .failed { layer.flush(); return false }
+            layer.enqueue(sample)
+        }
         return true
+    }
+
+    private func flush() {
+        if #available(iOS 17.0, macOS 14.0, *) { layer.sampleBufferRenderer.flush() } else { layer.flush() }
     }
 
     private func makeFormat() {

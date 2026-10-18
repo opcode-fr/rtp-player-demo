@@ -1,4 +1,4 @@
-package fr.opcode.rtpdemo.rtp
+package fr.opcode.rtpvideo.core
 
 /**
  * Remet les paquets RTP dans l'ordre et détecte les pertes.
