@@ -8,7 +8,7 @@ export type RtpStats = {
 };
 
 export type RtpVideoViewProps = {
-  /** SDP du flux (port, type de charge utile, SPS/PPS). Unicast ; multicast pas encore géré. */
+  /** SDP du flux (port, type de charge utile, SPS/PPS ; c= multicast et a=source-filter gérés). */
   sdp: string;
   /** Lecture en cours. Changer `sdp` pendant la lecture redémarre la session. */
   playing: boolean;

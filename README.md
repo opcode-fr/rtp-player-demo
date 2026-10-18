@@ -7,7 +7,7 @@ VideoToolbox). Aucune dépendance d'exécution, donc aucune contrainte LGPL.
 ## Ce que ça fait
 
 ```
-UDP (unicast) -> RTP (RFC 3550) -> remise en ordre -> H.264 (RFC 6184) -> décodeur matériel -> écran
+UDP (unicast ou multicast) -> RTP (RFC 3550) -> remise en ordre -> H.264 (RFC 6184) -> décodeur matériel -> écran
 ```
 
 - Toute la vidéo reste native : JavaScript ne voit passer ni paquet ni image.
@@ -23,7 +23,7 @@ import { RtpVideoView } from './modules/rtp-video';
 
 <RtpVideoView
   style={{ width: '100%', aspectRatio: 16 / 9 }}
-  sdp={sdpText}                 // SDP du serveur
+  sdp={sdpText}                 // SDP du serveur (unicast ou multicast)
   playing={true}                // false = arrêt ; changer le SDP redémarre la session
   onStats={(e) => console.log(e.nativeEvent)}   // { packets, lostPackets, frames, droppedFrames }, chaque seconde
   onError={(e) => console.warn(e.nativeEvent.message)}
@@ -76,18 +76,28 @@ cd rn-demo/modules/rtp-video/ios && swift test        # Swift, sur le Mac
 cd android && ./gradlew testDebugUnitTest             # Kotlin (JDK 17 ou 21)
 ```
 
-## Préparer le multicast
+## Multicast
 
-L'entrée réseau passe par l'interface `RtpSource` ; `RtpSources.forSession()` choisit l'implémentation
-selon la ligne `c=` du SDP (224.0.0.0/4 = multicast). Aujourd'hui le multicast lève une erreur explicite
-(remontée en `onError`). Pour l'ajouter :
+Géré quand la ligne `c=` du SDP est une adresse multicast (224.0.0.0/4) ; `a=source-filter: incl`
+active le multicast « source-specific » (SSM : seuls les paquets de cette source sont acceptés).
 
-- **Android** : `MulticastSocket(port).joinGroup(...)` + `WifiManager.MulticastLock` acquis pendant la
-  lecture (permission `CHANGE_WIFI_MULTICAST_STATE`), sinon le Wi-Fi filtre les paquets.
-- **iOS** : `setsockopt(IP_ADD_MEMBERSHIP)` sur la même socket POSIX, **et** l'entitlement
-  `com.apple.developer.networking.multicast`, à demander à Apple (justification, délai, refus possible).
-  À lancer tôt : c'est le chemin critique.
-- Le Wi-Fi gère mal le multicast (débit bas, IGMP snooping) : tester sur le réseau réel du client.
+- **Android** : abonnement sur l'interface Wi-Fi (`wlan*`) et `WifiManager.MulticastLock` tenu pendant
+  la lecture (permission `CHANGE_WIFI_MULTICAST_STATE`, déjà déclarée par le module).
+- **iOS** : abonnement sur `en0` (Wi-Fi). Sur un **vrai iPhone**, il faut en plus l'entitlement
+  `com.apple.developer.networking.multicast`, accordé par Apple sur demande du titulaire du compte
+  développeur (formulaire « Multicast Networking Entitlement Request »). Une fois accordé, l'ajouter :
+
+  ```json
+  "ios": { "entitlements": { "com.apple.developer.networking.multicast": true } }
+  ```
+
+  Ne pas l'ajouter avant l'accord d'Apple : la signature échouerait. Le simulateur ne l'exige pas.
+- Le Wi-Fi gère mal le multicast (débit de base, IGMP snooping, réseaux maillés) : tester sur le
+  réseau réel du client, avec le débit réel du flux.
+
+Test local : `TTL=0 tools/stream.sh 239.255.42.42 5004` (TTL 0 : le flux ne sort pas de la machine),
+puis « SDP multicast » dans l'appli de démo (simulateur iOS). L'émulateur Android, derrière son NAT,
+ne voit pas le multicast de la machine : validation Android sur un vrai téléphone.
 
 ## Limites connues (démonstrateur)
 
@@ -95,3 +105,4 @@ selon la ligne `c=` du SDP (224.0.0.0/4 = multicast). Aujourd'hui le multicast l
 - Pas de RTCP, pas de SRTP (le flux circule en clair sur le réseau : à réserver à un réseau privé).
 - Pas d'audio, pas de packetization-mode 2 (STAP-B, MTAP, FU-B).
 - Pas de gestion arrière-plan / changement de réseau ; plusieurs vues = plusieurs ports.
+- Multicast : pas de mode `excl` du filtre de source, IPv4 seulement.

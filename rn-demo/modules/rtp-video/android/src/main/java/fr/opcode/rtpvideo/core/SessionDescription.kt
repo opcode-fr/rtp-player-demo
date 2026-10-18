@@ -10,6 +10,8 @@ class SessionDescription(
     val payloadType: Int,
     val sps: ByteArray?,
     val pps: ByteArray?,
+    /** Source imposée par `a=source-filter: incl` (multicast « source-specific », RFC 4570). */
+    val sourceAddress: String? = null,
 ) {
     val isMulticast: Boolean
         get() = connectionAddress?.substringBefore('.')?.toIntOrNull() in 224..239
@@ -22,6 +24,7 @@ class SessionDescription(
             var codec: String? = null
             var sps: ByteArray? = null
             var pps: ByteArray? = null
+            var source: String? = null
 
             for (raw in text.lineSequence()) {
                 val line = raw.trim()
@@ -36,6 +39,11 @@ class SessionDescription(
                     }
                     line.startsWith("a=rtpmap:") ->
                         codec = line.substringAfter(' ').substringBefore('/').uppercase()
+                    line.startsWith("a=source-filter:") -> {
+                        // "a=source-filter: incl IN IP4 <groupe> <source>" ; le mode excl n'est pas géré.
+                        val f = line.removePrefix("a=source-filter:").trim().split(Regex("\\s+"))
+                        if (f.size > 4 && f[0] == "incl") source = f[4]
+                    }
                     line.startsWith("a=fmtp:") -> {
                         val params = line.substringAfter(' ').split(';').map { it.trim() }
                         params.firstOrNull { it.startsWith("sprop-parameter-sets=") }
@@ -54,7 +62,7 @@ class SessionDescription(
             }
             require(port != null && payloadType != null) { "SDP sans ligne m=video exploitable" }
             require(codec == null || codec == "H264") { "Codec $codec non géré (H264 seulement)" }
-            return SessionDescription(address, port, payloadType, sps, pps)
+            return SessionDescription(address, port, payloadType, sps, pps, source)
         }
     }
 }

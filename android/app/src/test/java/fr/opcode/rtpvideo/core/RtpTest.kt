@@ -120,6 +120,18 @@ class RtpTest {
         val sdp = SessionDescription.parse("c=IN IP4 239.1.2.3/32\nm=video 5004 RTP/AVP 96\n")
         assertTrue(sdp.isMulticast)
         assertNull(sdp.sps)
+        assertNull(sdp.sourceAddress)
+    }
+
+    @Test
+    fun `lit le filtre de source (SSM)`() {
+        val sdp = SessionDescription.parse(
+            "c=IN IP4 232.1.1.1/16\nm=video 5004 RTP/AVP 96\na=source-filter: incl IN IP4 232.1.1.1 10.0.0.5\n"
+        )
+        assertEquals("232.1.1.1", sdp.connectionAddress)
+        assertEquals("10.0.0.5", sdp.sourceAddress)
+        val excl = SessionDescription.parse("m=video 5004 RTP/AVP 96\na=source-filter: excl IN IP4 * 10.0.0.5\n")
+        assertNull(excl.sourceAddress) // exclusion : non géré, on prend tout
     }
 
     // --- Flux réel enregistré depuis ffmpeg (tools/stream.sh, 50 images, GOP de 25) ----------
@@ -162,28 +174,54 @@ class RtpTest {
         assertEquals(all.last().timestamp, frames.last().timestamp)
     }
 
-    /** Bout en bout sur la boucle locale : vraie socket UDP, paquets envoyés comme par le serveur. */
-    @Test
-    fun `la socket unicast recoit le flux`() {
-        val port = 5996
+    // --- Bout en bout sur la boucle locale : vraies sockets UDP, paquets envoyés comme par le serveur ---
+
+    private val loopback: java.net.NetworkInterface
+        get() = java.net.NetworkInterface.getNetworkInterfaces().toList().first { it.isLoopback }
+
+    /** Envoie le flux enregistré vers [destination] et retourne le nombre d'images reçues pour [sdpText]. */
+    private fun framesReceived(sdpText: String, destination: String, multicastInterface: java.net.NetworkInterface? = null): Int {
+        val sdp = SessionDescription.parse(sdpText)
         val frames = java.util.concurrent.atomic.AtomicInteger()
-        val pipeline = RtpPipeline(96) { frames.incrementAndGet(); true }
-        val source = UnicastUdpSource(port)
+        val pipeline = RtpPipeline(sdp.payloadType) { frames.incrementAndGet(); true }
+        val source = RtpSources.forSession(sdp, multicastInterface)
         source.start(pipeline::onDatagram)
         try {
-            java.net.DatagramSocket().use { tx ->
-                val dest = java.net.InetSocketAddress("127.0.0.1", port)
+            // Canal IPv4 explicite : une MulticastSocket est en IPv6 par défaut sur macOS et
+            // n'applique alors pas l'interface aux envois IPv4.
+            java.nio.channels.DatagramChannel.open(java.net.StandardProtocolFamily.INET).use { tx ->
+                tx.setOption(java.net.StandardSocketOptions.IP_MULTICAST_IF, loopback)
+                val dest = java.net.InetSocketAddress(destination, sdp.port)
                 datagrams().forEachIndexed { i, d ->
-                    tx.send(java.net.DatagramPacket(d, d.size, dest))
+                    tx.send(java.nio.ByteBuffer.wrap(d), dest)
                     if (i % 20 == 0) Thread.sleep(2) // rythme doux, comme un vrai flux
                 }
             }
-            val deadline = System.currentTimeMillis() + 3000
+            val deadline = System.currentTimeMillis() + 2000
             while (frames.get() < 50 && System.currentTimeMillis() < deadline) Thread.sleep(10)
-            assertEquals(50, frames.get())
+            return frames.get()
         } finally {
             source.close()
         }
+    }
+
+    @Test
+    fun `la socket unicast recoit le flux`() {
+        assertEquals(50, framesReceived("m=video 5996 RTP/AVP 96", "127.0.0.1"))
+    }
+
+    @Test
+    fun `le multicast recoit le flux`() {
+        val sdp = "c=IN IP4 239.255.42.42/1\nm=video 5991 RTP/AVP 96"
+        assertEquals(50, framesReceived(sdp, "239.255.42.42", loopback))
+    }
+
+    @Test
+    fun `le multicast SSM filtre sur la source`() {
+        val good = "c=IN IP4 232.1.1.1\nm=video 5990 RTP/AVP 96\na=source-filter: incl IN IP4 232.1.1.1 127.0.0.1"
+        assertEquals(50, framesReceived(good, "232.1.1.1", loopback))
+        val other = "c=IN IP4 232.1.1.1\nm=video 5989 RTP/AVP 96\na=source-filter: incl IN IP4 232.1.1.1 10.9.9.9"
+        assertEquals(0, framesReceived(other, "232.1.1.1", loopback))
     }
 
     private fun datagrams(): List<ByteArray> =

@@ -1,6 +1,7 @@
 package fr.opcode.rtpdemo
 
 import android.app.Activity
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +20,7 @@ import fr.opcode.rtpvideo.core.RtpSource
 import fr.opcode.rtpvideo.core.RtpSources
 import fr.opcode.rtpvideo.core.SessionDescription
 import fr.opcode.rtpvideo.core.H264SurfaceDecoder
+import fr.opcode.rtpvideo.core.acquireMulticastLock
 
 /** Écran unique : le SDP du flux, Lire/Arrêter, la vidéo et quelques compteurs. */
 class MainActivity : Activity() {
@@ -31,6 +33,7 @@ class MainActivity : Activity() {
     private var source: RtpSource? = null
     private var decoder: H264SurfaceDecoder? = null
     private var pipeline: RtpPipeline? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
     private var surfaceReady = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +87,7 @@ class MainActivity : Activity() {
             val sdp = SessionDescription.parse(sdpField.text.toString())
             val dec = H264SurfaceDecoder(surfaceView.holder.surface, sdp.sps, sdp.pps)
             val pipe = RtpPipeline(sdp.payloadType, dec::decode)
+            if (sdp.isMulticast) multicastLock = acquireMulticastLock()
             val src = RtpSources.forSession(sdp)
             decoder = dec
             pipeline = pipe
@@ -104,6 +108,8 @@ class MainActivity : Activity() {
         decoder?.close()
         decoder = null
         pipeline = null
+        multicastLock?.release()
+        multicastLock = null
         playButton.text = "Lire"
     }
 

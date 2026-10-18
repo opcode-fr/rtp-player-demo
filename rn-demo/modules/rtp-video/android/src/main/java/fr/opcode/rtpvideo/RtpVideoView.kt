@@ -1,6 +1,7 @@
 package fr.opcode.rtpvideo
 
 import android.content.Context
+import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -14,6 +15,7 @@ import fr.opcode.rtpvideo.core.RtpPipeline
 import fr.opcode.rtpvideo.core.RtpSource
 import fr.opcode.rtpvideo.core.RtpSources
 import fr.opcode.rtpvideo.core.SessionDescription
+import fr.opcode.rtpvideo.core.acquireMulticastLock
 
 /**
  * Vue native : la vidéo ne passe jamais par JavaScript. JS fournit le SDP et l'état lecture/arrêt,
@@ -35,6 +37,7 @@ class RtpVideoView(context: Context, appContext: AppContext) : ExpoView(context,
     private var source: RtpSource? = null
     private var decoder: H264SurfaceDecoder? = null
     private var pipeline: RtpPipeline? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     init {
         addView(surfaceView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -66,6 +69,7 @@ class RtpVideoView(context: Context, appContext: AppContext) : ExpoView(context,
             decoder = dec
             val pipe = RtpPipeline(sdp.payloadType, dec::decode)
             pipeline = pipe
+            if (sdp.isMulticast) multicastLock = context.acquireMulticastLock()
             source = RtpSources.forSession(sdp).also { it.start(pipe::onDatagram) }
             activeSdp = sdpText
             ui.post(statsTicker)
@@ -83,6 +87,8 @@ class RtpVideoView(context: Context, appContext: AppContext) : ExpoView(context,
         decoder?.close()
         decoder = null
         pipeline = null
+        multicastLock?.release()
+        multicastLock = null
         activeSdp = null
     }
 

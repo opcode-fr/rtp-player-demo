@@ -4,15 +4,17 @@ import { Button, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-n
 
 import { RtpStats, RtpVideoView } from './modules/rtp-video';
 
-/** Le SDP produit par tools/stream.sh. */
-const DEFAULT_SDP = `v=0
+/** Les SDP produits par tools/stream.sh (unicast vers 127.0.0.1, ou multicast 239.255.42.42). */
+const sdpFor = (address: string) => `v=0
 o=- 0 0 IN IP4 127.0.0.1
 s=No Name
-c=IN IP4 127.0.0.1
+c=IN IP4 ${address}
 t=0 0
 m=video 5004 RTP/AVP 96
 a=rtpmap:96 H264/90000
 a=fmtp:96 packetization-mode=1; sprop-parameter-sets=Z0LAH9oBQBbsBEAAAAMAQAAADKPGDKg=,aM4PyA==; profile-level-id=42C01F`;
+const DEFAULT_SDP = sdpFor('127.0.0.1');
+const MULTICAST_SDP = sdpFor('239.255.42.42/1');
 
 export default function App() {
   const [sdp, setSdp] = useState(DEFAULT_SDP);
@@ -56,6 +58,10 @@ export default function App() {
       <View style={styles.button}>
         <Button title={playing ? 'Arrêter' : 'Lire'} onPress={toggle} />
       </View>
+      <View style={styles.presets}>
+        <Button title="SDP unicast" onPress={() => setSdp(DEFAULT_SDP)} disabled={playing} />
+        <Button title="SDP multicast" onPress={() => setSdp(MULTICAST_SDP)} disabled={playing} />
+      </View>
       <Text style={styles.label}>SDP du flux</Text>
       <TextInput
         style={styles.sdp}
@@ -75,6 +81,7 @@ const styles = StyleSheet.create({
   video: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' },
   stats: { padding: 12, fontVariant: ['tabular-nums'] },
   button: { marginHorizontal: 12 },
+  presets: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 },
   label: { marginHorizontal: 12, marginTop: 16, color: '#666', fontSize: 12 },
   sdp: {
     flex: 1,

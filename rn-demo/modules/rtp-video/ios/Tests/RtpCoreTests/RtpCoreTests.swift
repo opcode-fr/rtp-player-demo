@@ -91,7 +91,19 @@ final class RtpCoreTests: XCTestCase {
         let sdp = try SessionDescription.parse("c=IN IP4 239.1.2.3/32\nm=video 5004 RTP/AVP 96\n")
         XCTAssertTrue(sdp.isMulticast)
         XCTAssertNil(sdp.sps)
-        XCTAssertThrowsError(try RtpSources.forSession(sdp))
+        XCTAssertNil(sdp.sourceAddress)
+    }
+
+    func testParsesSourceFilter() throws {
+        let sdp = try SessionDescription.parse("""
+        c=IN IP4 232.1.1.1/16
+        m=video 5004 RTP/AVP 96
+        a=source-filter: incl IN IP4 232.1.1.1 10.0.0.5
+        """)
+        XCTAssertEqual(sdp.connectionAddress, "232.1.1.1")
+        XCTAssertEqual(sdp.sourceAddress, "10.0.0.5")
+        let excl = try SessionDescription.parse("m=video 5004 RTP/AVP 96\na=source-filter: excl IN IP4 * 10.0.0.5\n")
+        XCTAssertNil(excl.sourceAddress) // exclusion : non géré, on prend tout
     }
 
     // MARK: Flux réel enregistré depuis ffmpeg (50 images, GOP de 25)
@@ -135,23 +147,27 @@ final class RtpCoreTests: XCTestCase {
         XCTAssertEqual(frames.last?.timestamp, all.last?.timestamp)
     }
 
-    /// Bout en bout sur la boucle locale : vraie socket UDP, paquets envoyés comme par le serveur.
-    func testUnicastSocketReceivesStream() throws {
-        let port: UInt16 = 5997
+    // MARK: Bout en bout sur la boucle locale : vraies sockets UDP, paquets envoyés comme par le serveur
+
+    /// Envoie le flux enregistré vers `destination` et retourne le nombre d'images reçues par `sdp`.
+    private func framesReceived(sdp text: String, destination: String, interface: String? = nil) throws -> Int {
+        let sdp = try SessionDescription.parse(text)
         let lock = NSLock()
         var frames = 0
         let pipeline = RtpPipeline(payloadType: 96) { _ in lock.withLock { frames += 1 }; return true }
-        let source = UnicastUdpSource(port: port)
+        let source = try RtpSources.forSession(sdp, multicastInterface: interface)
         try source.start(onDatagram: pipeline.onDatagram)
         defer { source.stop() }
 
         let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         defer { close(fd) }
+        var loopIf = in_addr(s_addr: inet_addr("127.0.0.1"))
+        setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &loopIf, socklen_t(MemoryLayout<in_addr>.size))
         var addr = sockaddr_in()
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = port.bigEndian
-        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        addr.sin_port = sdp.port.bigEndian
+        addr.sin_addr.s_addr = inet_addr(destination)
         for (i, d) in try datagrams().enumerated() {
             _ = withUnsafePointer(to: &addr) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -160,9 +176,30 @@ final class RtpCoreTests: XCTestCase {
             }
             if i % 20 == 0 { usleep(2000) } // rythme doux, comme un vrai flux
         }
-        let deadline = Date().addingTimeInterval(3)
+        let deadline = Date().addingTimeInterval(2)
         while lock.withLock({ frames }) < 50, Date() < deadline { usleep(10_000) }
-        XCTAssertEqual(lock.withLock { frames }, 50)
+        return lock.withLock { frames }
+    }
+
+    func testUnicastSocketReceivesStream() throws {
+        XCTAssertEqual(try framesReceived(sdp: "m=video 5997 RTP/AVP 96", destination: "127.0.0.1"), 50)
+    }
+
+    func testMulticastReceivesStream() throws {
+        let sdp = "c=IN IP4 239.255.42.42/1\nm=video 5995 RTP/AVP 96"
+        XCTAssertEqual(try framesReceived(sdp: sdp, destination: "239.255.42.42", interface: "lo0"), 50)
+    }
+
+    func testSourceSpecificMulticastFiltersOnSource() throws {
+        let good = "c=IN IP4 232.1.1.1\nm=video 5994 RTP/AVP 96\na=source-filter: incl IN IP4 232.1.1.1 127.0.0.1"
+        XCTAssertEqual(try framesReceived(sdp: good, destination: "232.1.1.1", interface: "lo0"), 50)
+        let other = "c=IN IP4 232.1.1.1\nm=video 5993 RTP/AVP 96\na=source-filter: incl IN IP4 232.1.1.1 10.9.9.9"
+        XCTAssertEqual(try framesReceived(sdp: other, destination: "232.1.1.1", interface: "lo0"), 0)
+    }
+
+    func testUnknownMulticastInterfaceFails() throws {
+        let sdp = try SessionDescription.parse("c=IN IP4 239.255.42.42\nm=video 5992 RTP/AVP 96")
+        XCTAssertThrowsError(try RtpSources.forSession(sdp, multicastInterface: "nope0"))
     }
 
     private func fixture(_ name: String) -> URL {

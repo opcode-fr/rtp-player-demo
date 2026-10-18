@@ -3,10 +3,18 @@ package fr.opcode.rtpvideo.core
 import java.io.Closeable
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.SocketTimeoutException
+import java.net.StandardProtocolFamily
+import java.net.StandardSocketOptions
+import java.nio.ByteBuffer
+import java.nio.channels.ClosedChannelException
+import java.nio.channels.DatagramChannel
 
-/** Source de datagrammes RTP. Unicast aujourd'hui ; le multicast viendra s'y brancher. */
+/** Source de datagrammes RTP (unicast ou multicast). */
 interface RtpSource : Closeable {
     /** Démarre la réception ; [onDatagram] est appelé sur le thread de réception. */
     fun start(onDatagram: (ByteArray, Int) -> Unit)
@@ -47,14 +55,74 @@ class UnicastUdpSource(private val listenPort: Int) : RtpSource {
     }
 }
 
-object RtpSources {
-    fun forSession(sdp: SessionDescription): RtpSource =
-        if (sdp.isMulticast) {
-            // Multicast : MulticastSocket.joinGroup + WifiManager.MulticastLock (voir README).
-            throw UnsupportedOperationException("Multicast ${sdp.connectionAddress} pas encore géré")
-        } else {
-            UnicastUdpSource(sdp.port)
+/**
+ * Réception multicast, avec filtre de source optionnel (SSM).
+ * Sur Android, garder un WifiManager.MulticastLock pendant la lecture (voir [acquireMulticastLock]),
+ * sinon le Wi-Fi jette les paquets multicast pour économiser la batterie.
+ */
+class MulticastUdpSource(
+    private val group: InetAddress,
+    private val listenPort: Int,
+    private val source: InetAddress?,
+    private val networkInterface: NetworkInterface,
+) : RtpSource {
+    private var channel: DatagramChannel? = null
+    private var thread: Thread? = null
+
+    override fun start(onDatagram: (ByteArray, Int) -> Unit) {
+        val ch = DatagramChannel.open(StandardProtocolFamily.INET)
+            .setOption(StandardSocketOptions.SO_REUSEADDR, true)
+            .setOption(StandardSocketOptions.SO_RCVBUF, 4 shl 20)
+            .bind(InetSocketAddress(listenPort))
+        try {
+            if (source != null) ch.join(group, networkInterface, source) else ch.join(group, networkInterface)
+        } catch (e: Exception) {
+            ch.close()
+            throw e
         }
+        channel = ch
+        thread = Thread({
+            val buf = ByteBuffer.allocate(65536)
+            try {
+                while (true) {
+                    buf.clear()
+                    ch.receive(buf) // bloquant ; close() le débloque
+                    onDatagram(buf.array(), buf.position())
+                }
+            } catch (_: ClosedChannelException) {
+            }
+        }, "rtp-rx-mc").apply { start() }
+    }
+
+    override fun close() {
+        channel?.close() // quitte aussi le groupe
+        thread?.join(1000)
+        channel = null
+        thread = null
+    }
+}
+
+object RtpSources {
+    /**
+     * Choisit la source selon la ligne c= du SDP. [multicastInterface] : interface d'écoute
+     * multicast ; par défaut le Wi-Fi (wlan*), sinon la première interface multicast active.
+     */
+    fun forSession(sdp: SessionDescription, multicastInterface: NetworkInterface? = null): RtpSource {
+        if (!sdp.isMulticast) return UnicastUdpSource(sdp.port)
+        return MulticastUdpSource(
+            group = InetAddress.getByName(sdp.connectionAddress),
+            listenPort = sdp.port,
+            source = sdp.sourceAddress?.let(InetAddress::getByName),
+            networkInterface = multicastInterface ?: defaultMulticastInterface(),
+        )
+    }
+
+    fun defaultMulticastInterface(): NetworkInterface =
+        NetworkInterface.getNetworkInterfaces().toList()
+            .filter { it.isUp && !it.isLoopback && it.supportsMulticast() }
+            .filter { nif -> nif.inetAddresses.toList().any { it is Inet4Address } }
+            .minByOrNull { if (it.name.startsWith("wlan")) 0 else 1 }
+            ?: error("Aucune interface réseau multicast avec une adresse IPv4")
 }
 
 class RtpStats {

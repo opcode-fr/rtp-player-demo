@@ -8,6 +8,8 @@ public struct SessionDescription {
     public let payloadType: UInt8
     public let sps: [UInt8]?
     public let pps: [UInt8]?
+    /// Source imposée par `a=source-filter: incl` (multicast « source-specific », RFC 4570).
+    public let sourceAddress: String?
 
     public var isMulticast: Bool {
         guard let first = connectionAddress?.split(separator: ".").first, let o = Int(first) else { return false }
@@ -24,8 +26,10 @@ public struct SessionDescription {
         }
     }
 
-    public init(connectionAddress: String?, port: UInt16, payloadType: UInt8, sps: [UInt8]?, pps: [UInt8]?) {
+    public init(connectionAddress: String?, port: UInt16, payloadType: UInt8, sps: [UInt8]?, pps: [UInt8]?,
+                sourceAddress: String? = nil) {
         self.connectionAddress = connectionAddress
+        self.sourceAddress = sourceAddress
         self.port = port
         self.payloadType = payloadType
         self.sps = sps
@@ -39,6 +43,7 @@ public struct SessionDescription {
         var codec: String?
         var sps: [UInt8]?
         var pps: [UInt8]?
+        var source: String?
 
         for raw in text.split(whereSeparator: \.isNewline) {
             let line = raw.trimmingCharacters(in: .whitespaces)
@@ -51,6 +56,10 @@ public struct SessionDescription {
                 payloadType = fields.count > 3 ? UInt8(fields[3]) : nil
             } else if line.hasPrefix("a=rtpmap:"), fields.count > 1 {
                 codec = String(fields[1].split(separator: "/")[0]).uppercased()
+            } else if line.hasPrefix("a=source-filter:") {
+                // "a=source-filter: incl IN IP4 <groupe> <source>" ; le mode excl n'est pas géré.
+                let f = line.dropFirst("a=source-filter:".count).split(separator: " ").map(String.init)
+                if f.count > 4, f[0] == "incl" { source = f[4] }
             } else if line.hasPrefix("a=fmtp:"), let space = line.firstIndex(of: " ") {
                 for param in line[space...].split(separator: ";") {
                     let kv = param.trimmingCharacters(in: .whitespaces)
@@ -69,7 +78,8 @@ public struct SessionDescription {
         }
         guard let port, let payloadType else { throw ParseError.noVideo }
         if let codec, codec != "H264" { throw ParseError.unsupportedCodec(codec) }
-        return SessionDescription(connectionAddress: address, port: port, payloadType: payloadType, sps: sps, pps: pps)
+        return SessionDescription(connectionAddress: address, port: port, payloadType: payloadType, sps: sps, pps: pps,
+                                  sourceAddress: source)
     }
 
     private static func padded(_ s: String) -> String {
