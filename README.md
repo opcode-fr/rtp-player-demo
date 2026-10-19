@@ -106,3 +106,7 @@ ne voit pas le multicast de la machine : validation Android sur un vrai téléph
 - Pas d'audio, pas de packetization-mode 2 (STAP-B, MTAP, FU-B).
 - Pas de gestion arrière-plan / changement de réseau ; plusieurs vues = plusieurs ports.
 - Multicast : pas de mode `excl` du filtre de source, IPv4 seulement.
+
+## Licence
+
+MIT, voir [LICENSE](LICENSE).
